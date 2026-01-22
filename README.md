@@ -59,10 +59,8 @@ debug .debug.trace
 ---
 
 ## TUI Overview
-
-```
 ![image of TUI](https://i.ibb.co/8DjRTMMz/Capture.png)
-```
+
 
 * `>` indicates a value changed at this step
 * Source view stays aligned with recorded execution location
