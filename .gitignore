@@ -1,0 +1,7 @@
+.debug.trace
+debug
+example
+nim.cfg
+bin/
+debug_cli
+debug_log
