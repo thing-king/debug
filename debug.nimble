@@ -11,4 +11,5 @@ binDir        = "bin"
 # Dependencies
 
 requires "nim >= 1.0.0"
-# Uses only std library: json, times, tables, terminal, strutils, os
+requires "https://github.com/thing-king/colors"
+requires "https://github.com/thing-king/macros2"

@@ -19,6 +19,8 @@ A **trace‑based time‑travel debugger** for Nim. It records execution at Nim�
 
 ---
 
+![image of TUI](https://i.ibb.co/8DjRTMMz/Capture.png)
+
 ## Quick Start
 
 ### 1. Instrument Code
@@ -55,31 +57,6 @@ This produces a local trace file:
 ```bash
 debug .debug.trace
 ```
-
----
-
-## TUI Overview
-
-```
-+-------------------------------------------------------------------------+
-| TRACE DEBUGGER                                        Step 12 / 45       |
-+-------------------------------------------------------------------------+
-| example.nim:15 in <module> [depth:0]                                    |
-+-----------------------------------------------+-------------------------+
-|    12| echo "x is small"                      | VARIABLES               |
-|    13|                                       |  >x = 30                |
-|    14| for i in 1..3:                        |   y = 20                |
-|  > 15|   echo "Iteration: ", i    <---      |  >i = 2                 |
-|    16|   if i == 2:                          |                         |
-|    17|     echo "Found 2"                   | WATCHED                 |
-|    18|                                       |   x: 30                 |
-+-----------------------------------------------+-------------------------+
-```
-
-* `>` indicates a value changed at this step
-* Source view stays aligned with recorded execution location
-
----
 
 ## Controls
 
