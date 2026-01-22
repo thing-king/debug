@@ -61,19 +61,7 @@ debug .debug.trace
 ## TUI Overview
 
 ```
-+-------------------------------------------------------------------------+
-| TRACE DEBUGGER                                        Step 12 / 45       |
-+-------------------------------------------------------------------------+
-| example.nim:15 in <module> [depth:0]                                    |
-+-----------------------------------------------+-------------------------+
-|    12| echo "x is small"                      | VARIABLES               |
-|    13|                                       |  >x = 30                |
-|    14| for i in 1..3:                        |   y = 20                |
-|  > 15|   echo "Iteration: ", i    <---      |  >i = 2                 |
-|    16|   if i == 2:                          |                         |
-|    17|     echo "Found 2"                   | WATCHED                 |
-|    18|                                       |   x: 30                 |
-+-----------------------------------------------+-------------------------+
+![image of TUI](https://i.ibb.co/8DjRTMMz/Capture.png)
 ```
 
 * `>` indicates a value changed at this step
