@@ -19,6 +19,8 @@ A **trace‑based time‑travel debugger** for Nim. It records execution at Nim�
 
 ---
 
+![image of TUI](https://i.ibb.co/8DjRTMMz/Capture.png)
+
 ## Quick Start
 
 ### 1. Instrument Code
@@ -55,17 +57,6 @@ This produces a local trace file:
 ```bash
 debug .debug.trace
 ```
-
----
-
-## TUI Overview
-![image of TUI](https://i.ibb.co/8DjRTMMz/Capture.png)
-
-
-* `>` indicates a value changed at this step
-* Source view stays aligned with recorded execution location
-
----
 
 ## Controls
 
