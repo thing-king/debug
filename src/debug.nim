@@ -9,6 +9,7 @@ import macros2
 from macros as stdmacros import nil
 import strutils
 import std/sets
+import std/os
 
 import ./debug_log
 export debug_log
@@ -32,17 +33,21 @@ proc extractVarNames(section: Node, vars: var HashSet[string]) =
         let nameNode = identDef[i]
         case nameNode.kind
         of nkIdent:
-          vars.incl(nameNode.strVal)
+          # Skip _ discard identifier - can't be captured
+          if nameNode.strVal != "_":
+            vars.incl(nameNode.strVal)
         of nkPostfix:
           if nameNode.len >= 2 and nameNode[1].kind == nkIdent:
-            vars.incl(nameNode[1].strVal)
+            if nameNode[1].strVal != "_":
+              vars.incl(nameNode[1].strVal)
         of nkPragmaExpr:
           if nameNode.len >= 1:
             let inner = nameNode[0]
             if inner.kind == nkIdent:
-              vars.incl(inner.strVal)
+              if inner.strVal != "_":
+                vars.incl(inner.strVal)
             elif inner.kind == nkPostfix and inner.len >= 2:
-              if inner[1].kind == nkIdent:
+              if inner[1].kind == nkIdent and inner[1].strVal != "_":
                 vars.incl(inner[1].strVal)
         else:
           discard
@@ -52,7 +57,7 @@ proc extractForVars(forStmt: Node, vars: var HashSet[string]) =
   if forStmt.len >= 3:
     for i in 0..<(forStmt.len - 2):
       let varNode = forStmt[i]
-      if varNode.kind == nkIdent:
+      if varNode.kind == nkIdent and varNode.strVal != "_":
         vars.incl(varNode.strVal)
 
 proc extractProcParams(procDef: Node, vars: var HashSet[string]) =
@@ -64,7 +69,7 @@ proc extractProcParams(procDef: Node, vars: var HashSet[string]) =
       if identDef.kind == nkIdentDefs and identDef.len >= 3:
         for j in 0..<(identDef.len - 2):
           let nameNode = identDef[j]
-          if nameNode.kind == nkIdent:
+          if nameNode.kind == nkIdent and nameNode.strVal != "_":
             vars.incl(nameNode.strVal)
 
 proc getProcName(procDef: Node): string =
@@ -287,8 +292,12 @@ macro debug*(body: untyped): untyped =
   let instrumented = instrumentStmtList(bodyNode, knownVars, "<module>",
                                         callInfo.filename, callInfo.line.int)
 
+  # Build debug file path relative to the source file that uses the macro
+  let sourceDir = callInfo.filename.parentDir()
+  let tracePath = if sourceDir.len > 0: sourceDir / ".debug.trace" else: ".debug.trace"
+
   result = stdmacros.newStmtList()
-  stdmacros.add(result, stdmacros.newCall(stdmacros.bindSym"initDebugLog"))
+  stdmacros.add(result, stdmacros.newCall(stdmacros.bindSym"initDebugLog", stdmacros.newLit(tracePath)))
   stdmacros.add(result, instrumented.toNimNode())
   stdmacros.add(result, stdmacros.newCall(stdmacros.bindSym"closeDebugLog"))
 
