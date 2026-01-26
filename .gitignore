@@ -5,3 +5,4 @@ nim.cfg
 bin/
 debug_cli
 debug_log
+CLAUDE.md

@@ -7,11 +7,12 @@
 
 import macros2
 from macros as stdmacros import nil
+import macros except newStmtList
 import strutils
 import std/sets
 import std/os
 
-import ./debug_log
+import ./debug/debug_log
 export debug_log
 
 proc describe(node: Node): string =
@@ -97,30 +98,101 @@ proc buildVarsCapture(vars: HashSet[string]): Node =
   ## Build a table constructor that captures all variables
   if vars.len == 0:
     var bracketExpr = newNode(nkBracketExpr)
-    bracketExpr.add(ident("initTable"))
-    bracketExpr.add(ident("string"))
-    bracketExpr.add(ident("string"))
+    bracketExpr.add(macros2.ident("initTable"))
+    bracketExpr.add(macros2.ident("string"))
+    bracketExpr.add(macros2.ident("string"))
     return newCall(bracketExpr)
 
   var pairs = newNode(nkBracket)
   for varName in vars:
     var tup = newNode(nkTupleConstr)
-    tup.add(newLit(varName))
-    tup.add(newCall(ident("safeRepr"), ident(varName)))
+    tup.add(macros2.newLit(varName))
+    tup.add(newCall(macros2.ident("safeRepr"), macros2.ident(varName)))
     pairs.add(tup)
 
-  result = newCall(newDotExpr(pairs, ident("toTable")))
+  result = newCall(newDotExpr(pairs, macros2.ident("toTable")))
 
 proc buildDebugLogCall(filename: string, line: int, col: int, desc: string, vars: HashSet[string]): Node =
   ## Build the debugLog call for a statement with explicit location
   result = newCall(
-    ident("debugLog"),
-    newLit(filename),
-    newLit(line),
-    newLit(col),
-    newLit(desc),
+    macros2.ident("debugLog"),
+    macros2.newLit(filename),
+    macros2.newLit(line),
+    macros2.newLit(col),
+    macros2.newLit(desc),
     buildVarsCapture(vars)
   )
+
+proc describeMacroNode(node: Node): string =
+  ## Generate a human-readable description for macro instrumentation
+  result = node.repr.split("\n")[0]
+  if result.len > 60:
+    result = result[0..56] & "..."
+
+proc buildMacroEcho(scopeName: string, filename: string, line: int, desc: string): Node =
+  ## Build an echo call for compile-time macro logging
+  let shortFile = filename.split("/")[^1]
+  let msg = "[MACRO] " & scopeName & " @ " & shortFile & ":" & $line & " - " & desc
+  result = newCall(macros2.ident("echo"), macros2.newLit(msg))
+
+proc instrumentMacroBody(stmtList: Node, scopeName: string, parentFile: string = "", parentLine: int = 0): Node =
+  ## Instrument macro/template body with compile-time echo calls
+  result = newStmtList()
+
+  for i, child in stmtList:
+    let lineInfo = child.lineInfoObj
+    var filename = lineInfo.filename
+    var line = lineInfo.line.int
+
+    if filename.len == 0 or line == 0:
+      filename = parentFile
+      line = parentLine
+
+    let desc = describeMacroNode(child)
+
+    # Add echo before each statement
+    result.add(buildMacroEcho(scopeName, filename, line, desc))
+
+    # Copy and recurse
+    var instrumentedChild = child.copyNodeTree()
+
+    case child.kind
+    of nkStmtList, nkStmtListExpr:
+      instrumentedChild = instrumentMacroBody(child, scopeName, filename, line)
+
+    of nkIfStmt:
+      for j in 0..<child.len:
+        let branch = child[j]
+        if branch.kind in {nkElifBranch, nkElse}:
+          let bodyIdx = if branch.kind == nkElse: 0 else: 1
+          if branch[bodyIdx].kind in {nkStmtList, nkStmtListExpr}:
+            instrumentedChild[j][bodyIdx] = instrumentMacroBody(branch[bodyIdx], scopeName, filename, line)
+
+    of nkCaseStmt:
+      for j in 1..<child.len:
+        let branch = child[j]
+        if branch.kind in {nkOfBranch, nkElse}:
+          let bodyIdx = if branch.kind == nkElse: 0 else: branch.len - 1
+          if branch[bodyIdx].kind in {nkStmtList, nkStmtListExpr}:
+            instrumentedChild[j][bodyIdx] = instrumentMacroBody(branch[bodyIdx], scopeName, filename, line)
+
+    of nkWhileStmt:
+      if child[1].kind in {nkStmtList, nkStmtListExpr}:
+        instrumentedChild[1] = instrumentMacroBody(child[1], scopeName, filename, line)
+
+    of nkForStmt:
+      let lastIdx = child.len - 1
+      if child[lastIdx].kind in {nkStmtList, nkStmtListExpr}:
+        instrumentedChild[lastIdx] = instrumentMacroBody(child[lastIdx], scopeName, filename, line)
+
+    of nkBlockStmt:
+      if child[1].kind in {nkStmtList, nkStmtListExpr}:
+        instrumentedChild[1] = instrumentMacroBody(child[1], scopeName, filename, line)
+
+    else:
+      discard
+
+    result.add(instrumentedChild)
 
 proc instrumentStmtList(stmtList: Node, knownVars: var HashSet[string], scopeName: string,
                         parentFile: string = "", parentLine: int = 0): Node =
@@ -196,13 +268,30 @@ proc instrumentStmtList(stmtList: Node, knownVars: var HashSet[string], scopeNam
       let bodyIdx = 6
       if child[bodyIdx].kind in {nkStmtList, nkStmtListExpr}:
         var newBody = newStmtList()
-        newBody.add(newCall(ident("enterScope"), newLit(procName)))
+        newBody.add(newCall(macros2.ident("enterScope"), macros2.newLit(procName)))
 
         var deferStmt = newNode(nkDefer)
-        deferStmt.add(newCall(ident("exitScope")))
+        deferStmt.add(newCall(macros2.ident("exitScope")))
         newBody.add(deferStmt)
 
         let instrumentedBody = instrumentStmtList(child[bodyIdx], procVars, procName, filename, line)
+        for stmt in instrumentedBody:
+          newBody.add(stmt)
+
+        instrumentedChild[bodyIdx] = newBody
+
+    of nkMacroDef, nkTemplateDef:
+      # Macros/templates run at compile-time, use echo-based logging
+      let procName = getProcName(child)
+      let bodyIdx = 6
+      if child[bodyIdx].kind in {nkStmtList, nkStmtListExpr}:
+        var newBody = newStmtList()
+        # Add entry echo
+        let entryMsg = "[MACRO] >> " & procName
+        newBody.add(newCall(macros2.ident("echo"), macros2.newLit(entryMsg)))
+
+        # Instrument body with echo calls
+        let instrumentedBody = instrumentMacroBody(child[bodyIdx], procName, filename, line)
         for stmt in instrumentedBody:
           newBody.add(stmt)
 
@@ -284,6 +373,10 @@ converter toChar*(i: int64): char =
 macro debug*(body: untyped): untyped =
   ## Main debug macro - instruments all code with trace statements
   ## and logs execution to .debug.trace for time-travel debugging
+  ##
+  ## All debug: blocks across all packages write to the SAME trace file:
+  ## - Current working directory + ".debug.trace" (default)
+  ## - Or DEBUG_TRACE_PATH environment variable if set
   let bodyNode = body.toNode
   var knownVars: HashSet[string]
 
@@ -292,12 +385,9 @@ macro debug*(body: untyped): untyped =
   let instrumented = instrumentStmtList(bodyNode, knownVars, "<module>",
                                         callInfo.filename, callInfo.line.int)
 
-  # Build debug file path relative to the source file that uses the macro
-  let sourceDir = callInfo.filename.parentDir()
-  let tracePath = if sourceDir.len > 0: sourceDir / ".debug.trace" else: ".debug.trace"
-
+  # initDebugLog() will determine the shared path at runtime
   result = stdmacros.newStmtList()
-  stdmacros.add(result, stdmacros.newCall(stdmacros.bindSym"initDebugLog", stdmacros.newLit(tracePath)))
+  stdmacros.add(result, stdmacros.newCall(stdmacros.bindSym"initDebugLog"))
   stdmacros.add(result, instrumented.toNimNode())
   stdmacros.add(result, stdmacros.newCall(stdmacros.bindSym"closeDebugLog"))
 
@@ -308,3 +398,32 @@ macro noDebug*(body: untyped): untyped =
   ## Pass-through macro for use outside debug blocks.
   ## Inside debug blocks, noDebug: is handled specially to skip instrumentation.
   result = body
+
+# =============================================================================
+# COMPILE-TIME DEBUG LOGGING
+# =============================================================================
+# Use these for debugging macros and compile-time code.
+# Output goes to stdout during compilation.
+
+proc log*(msg: string) =
+  ## Simple compile-time log - just prints message
+  echo "[DEBUG] " & msg
+
+proc log*(label: string, value: string) =
+  ## Compile-time log with label and value
+  echo "[DEBUG] " & label & ": " & value
+
+proc log*(label: string, value: int) =
+  ## Compile-time log with label and int value
+  echo "[DEBUG] " & label & ": " & $value
+
+template here*() =
+  ## Print current file:line at compile-time
+  const info = instantiationInfo()
+  echo "[DEBUG] @ " & info.filename & ":" & $info.line
+
+template here*(msg: string) =
+  ## Print current file:line with message at compile-time
+  const info = instantiationInfo()
+  echo "[DEBUG] @ " & info.filename & ":" & $info.line & " - " & msg
+

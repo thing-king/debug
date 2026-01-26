@@ -156,3 +156,73 @@ Fields are designed for **incremental reconstruction**, not raw replay.
 * Large traces are expected; use search, breakpoints, and diffs
 * Intended for debugging and exploration, not production builds
 * Use `noDebug:` aggressively in tight loops
+
+---
+
+## CLI Commands
+
+The debug package includes CLI commands for managing instrumentation:
+
+### Basic Commands
+
+```bash
+# Add debug: wrapper to a file
+debug add myfile.nim
+
+# Add debug: wrapper to all .nim files recursively
+debug add
+
+# Remove debug: wrapper from a file
+debug remove myfile.nim
+
+# Remove debug: wrapper from all .nim files recursively
+debug remove
+```
+
+### Raw Instrumentation (Advanced)
+
+For cases where the `debug:` macro approach doesn't work (e.g., debugging macros, compile-time code, or when you need to see the expanded instrumentation):
+
+```bash
+# Expand debug instrumentation inline (creates .predebug backup)
+debug addRaw myfile.nim
+
+# Expand recursively on all .nim files
+debug addRaw
+
+# Restore original from backup
+debug removeRaw myfile.nim
+
+# Restore recursively on all .nim files
+debug removeRaw
+```
+
+**Use cases for `addRaw`:**
+
+1. **Debugging macros** – Macros get echo-based logging at compile time
+2. **Understanding instrumentation** – See exactly what code gets generated
+3. **Files that can't use the macro** – When `debug:` block syntax isn't suitable
+4. **Troubleshooting the debug package** – Debug the debugger itself
+
+**Important notes:**
+
+* `addRaw` creates a `.predebug` backup file before transforming
+* `removeRaw` requires this backup to restore the original
+* The raw instrumentation is verbose – use only when needed
+* For normal debugging, prefer the `debug:` macro approach
+
+**Example raw output:**
+
+```nim
+# Original
+proc greet(name: string) =
+  echo "Hello, " & name
+
+# After addRaw
+proc greet(name: string) =
+  enterScope("greet")
+  defer:
+    exitScope()
+  debugLog("file.nim", 2, 2, "echo \"Hello, \" & name", [("name", safeRepr(name))].toTable())
+  echo "Hello, " & name
+```
