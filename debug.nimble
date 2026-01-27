@@ -5,7 +5,7 @@ author        = "savannt"
 description   = "Time-travel debugger with execution tracing and interactive CLI replay"
 license       = "MIT"
 srcDir        = "src"
-namedBin      = {"debug_cli": "debug"}.toTable
+namedBin      = {"debug/debug_cli": "debug"}.toTable
 binDir        = "bin"
 
 # Dependencies

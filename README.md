@@ -218,11 +218,14 @@ debug removeRaw
 proc greet(name: string) =
   echo "Hello, " & name
 
-# After addRaw
+# After addRaw (compile with -d:debugVars for variable capture)
 proc greet(name: string) =
   enterScope("greet")
   defer:
     exitScope()
-  debugLog("file.nim", 2, 2, "echo \"Hello, \" & name", [("name", safeRepr(name))].toTable())
+  when defined(debugVars):
+    debugLog("file.nim", 2, 2, "echo \"Hello, \" & name", toVarList([("name", safeRepr(name))]))
+  else:
+    debugLog("file.nim", 2, 2, "echo \"Hello, \" & name")
   echo "Hello, " & name
 ```
